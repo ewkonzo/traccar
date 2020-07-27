@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.traccar.Context;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
+import org.traccar.model.User;
 import org.traccar.notification.NotificationFormatter;
 
 import javax.ws.rs.client.Entity;
@@ -31,7 +32,6 @@ public class NotificatorTelegram extends Notificator {
     private static final Logger LOGGER = LoggerFactory.getLogger(NotificatorTelegram.class);
 
     private String url;
-    private String chatId;
 
     public static class Message {
         @JsonProperty("chat_id")
@@ -46,27 +46,28 @@ public class NotificatorTelegram extends Notificator {
         url = String.format(
                 "https://api.telegram.org/bot%s/sendMessage",
                 Context.getConfig().getString("notificator.telegram.key"));
-        chatId = Context.getConfig().getString("notificator.telegram.chatId");
     }
 
     @Override
     public void sendSync(long userId, Event event, Position position) {
+        final User user = Context.getPermissionsManager().getUser(userId);
+        if (user.getAttributes().containsKey("telegramChatId")) {
+            Message message = new Message();
+            message.chatId = user.getString("telegramChatId");
+            message.text = NotificationFormatter.formatShortMessage(userId, event, position);
 
-        Message message = new Message();
-        message.chatId = chatId;
-        message.text = NotificationFormatter.formatShortMessage(userId, event, position);
+            Context.getClient().target(url).request()
+                    .async().post(Entity.json(message), new InvocationCallback<Object>() {
+                @Override
+                public void completed(Object o) {
+                }
 
-        Context.getClient().target(url).request()
-                .async().post(Entity.json(message), new InvocationCallback<Object>() {
-            @Override
-            public void completed(Object o) {
-            }
-
-            @Override
-            public void failed(Throwable throwable) {
-                LOGGER.warn("Telegram API error", throwable);
-            }
-        });
+                @Override
+                public void failed(Throwable throwable) {
+                    LOGGER.warn("Telegram API error", throwable);
+                }
+            });
+        }
     }
 
     @Override
